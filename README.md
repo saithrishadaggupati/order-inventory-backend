@@ -10,6 +10,7 @@ A backend for handling orders and inventory without the usual concurrency headac
 - Spring Security + JWT
 - Flyway for migrations
 - k6 for load testing
+- GitHub Actions for CI (build + tests run on every push)
 - Docker Compose, deployed on AWS EC2
 
 ## What it does
@@ -91,7 +92,6 @@ Token gets passed in at runtime — it's not sitting in the script.
 
 ## Not done yet
 
-- CI/CD via GitHub Actions
 - More order endpoints — order history, cancellation, status tracking. Right now it's just placement, which was the priority given the time I had.
 
 ## Why I built this
