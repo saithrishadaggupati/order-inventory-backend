@@ -86,6 +86,7 @@ public class OrderConcurrencyTest {
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();
+                    e.printStackTrace();
                 } finally {
                     latch.countDown();
                 }
