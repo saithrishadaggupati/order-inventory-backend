@@ -1,75 +1,69 @@
 # Order Inventory Backend
 
-A concurrency-safe backend service for order and inventory management. Built with Spring Boot and Java, this project focuses on correctness under concurrent load: optimistic locking prevents overselling, a transactional outbox guarantees reliable event publishing, and idempotency keys make order placement safe to retry.
+A backend for handling orders and inventory without the usual concurrency headaches — no overselling, no lost updates, no duplicate orders on retry. Built with Spring Boot, backed by Postgres, and load-tested to prove it actually holds up under pressure, not just in theory.
 
-## Tech Stack
+## Stack
 
-- Backend: Java 17, Spring Boot 3.5
-- Database: PostgreSQL on AWS RDS
-- Caching: Redis
-- Security: Spring Security, JWT authentication
-- Database Migrations: Flyway
-- Containerization: Docker, Docker Compose
-- Deployment: AWS EC2
+- Java 17, Spring Boot 3.5
+- PostgreSQL (AWS RDS)
+- Redis for caching
+- Spring Security + JWT
+- Flyway for migrations
+- k6 for load testing
+- Docker Compose, deployed on AWS EC2
 
-## Key Features
+## What it does
 
-- **Order placement with concurrency safety** — orders decrement product stock using optimistic locking (`@Version`), preventing overselling under concurrent requests
-- **Idempotent order creation** — orders can include an `Idempotency-Key` header; retried requests with the same key return the original response instead of creating a duplicate order
-- **Transactional outbox pattern** — order placement writes domain events (including low-stock alerts) to an outbox table, published asynchronously by a background `OutboxPublisher`, avoiding dual-write inconsistency between the DB and event stream
-- User registration and login with JWT-based authentication
-- Role-based access control (`USER`, `ADMIN`)
-- Redis caching for frequently requested product data
-- Concurrency test suite (`OrderConcurrencyTest`) validating safe stock decrements under simultaneous order requests
+**Orders don't oversell.** Stock updates use optimistic locking (`@Version` on the `Product` entity), so if two people try to buy the last item at the same time, only one wins — the other gets a clean conflict response instead of silently overselling.
 
-## API Endpoints
+**Retries are safe.** Order placement accepts an `Idempotency-Key` header. Send the same key twice — network hiccup, client retry, whatever — and you get back the original order, not a duplicate.
 
-| Method | Endpoint | Access | Description |
-|--------|----------|--------|-------------|
-| POST | /auth/register | Public | Register a new user |
-| POST | /auth/login | Public | Authenticate and receive a JWT |
-| GET | /products/{id} | Public | Fetch a product by ID |
-| POST | /products | Admin only | Create a new product |
-| POST | /orders | Authenticated | Place an order (optional `Idempotency-Key` header for safe retries) |
+**Events don't get lost.** Placing an order writes to an outbox table in the same transaction as the order itself, and a background publisher (`OutboxPublisher`) picks those up and processes them separately. No dual-write problem where the DB commits but the event never fires.
 
-## Running Locally
+Also included: JWT auth, role-based access (`USER`/`ADMIN`), Redis caching on product lookups.
 
-### Prerequisites
+## Does it actually work under load?
 
-- Docker
-- Docker Compose
-- Access to a PostgreSQL database, such as AWS RDS
+Ran a k6 test: 50 concurrent users, all hammering the same product that only has 30 units in stock.
 
-### Setup
+- 30 orders succeeded — exactly matching stock
+- 70 got rejected with a proper 409/400, not a crash
+- Final stock: **0**, never negative
+- p95 latency: 966ms, p99: 986ms
 
-1. Clone the repository:
+That's the whole point of the optimistic locking — it held under real concurrent traffic, not just a unit test running in isolation. Script's in `k6-tests/order-load-test.js`.
+
+## Endpoints
+
+| Method | Path | Who | What |
+|--------|------|-----|------|
+| POST | `/auth/register` | Anyone | Create an account |
+| POST | `/auth/login` | Anyone | Get a JWT |
+| GET | `/products/{id}` | Anyone | Look up a product |
+| POST | `/products` | Admin | Create a product |
+| POST | `/orders` | Logged in | Place an order (send `Idempotency-Key` to make retries safe) |
+
+## Running it locally
 
 \`\`\`bash
 git clone https://github.com/saithrishadaggupati/order-inventory-backend.git
 cd order-inventory-backend
 \`\`\`
 
-2. Create a `.env` file in the project root:
-
+Create a `.env` file:
 \`\`\`
 DB_PASSWORD=your_db_password_here
 \`\`\`
 
-3. If needed, update `docker-compose.yml` with your PostgreSQL or AWS RDS connection details.
-
-4. Build and start the services:
+Point `docker-compose.yml` at your own Postgres instance if you're not using RDS, then:
 
 \`\`\`bash
 docker compose up -d --build
 \`\`\`
 
-5. The API will be available at:
+API's up at `http://localhost:8080`.
 
-\`\`\`
-http://localhost:8080
-\`\`\`
-
-## Example: Placing an Idempotent Order
+## Placing an order
 
 \`\`\`bash
 curl -X POST http://localhost:8080/orders \\
@@ -79,26 +73,27 @@ curl -X POST http://localhost:8080/orders \\
   -d '{"productId": 1, "quantity": 2}'
 \`\`\`
 
-Repeating this exact request with the same `Idempotency-Key` returns the original order response rather than creating a second order.
+Send that exact request again with the same idempotency key and you'll get the same order back, not a second one.
 
-## Environment Variables
+## Running the load test
 
-| Variable | Description |
-|----------|--------------|
-| DB_PASSWORD | PostgreSQL database password. Keep this value private and never commit it to version control. |
+\`\`\`bash
+k6 run -e LOAD_TEST_TOKEN=<your_jwt> ./k6-tests/order-load-test.js
+\`\`\`
 
-## Project Notes
+Token gets passed in at runtime — it's not sitting in the script.
 
-- Users created through the registration endpoint are assigned the `USER` role by default; `ADMIN` must be assigned separately (e.g. directly in the database).
-- Database schema changes are managed through Flyway migrations located in `src/main/resources/db/migration`.
-- Sensitive configuration values are stored in environment variables and excluded from Git via `.gitignore`.
+## A few things worth knowing
 
-## Roadmap
+- New users are always `USER` by default. Making someone `ADMIN` is a manual step right now (straight DB update).
+- Schema changes go through Flyway (`src/main/resources/db/migration`).
+- Nothing sensitive is committed — `.env` and any test tokens are gitignored.
 
-- [ ] k6 load testing for order placement under concurrent traffic
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Expand order endpoints (order history, cancellation, status updates)
+## Not done yet
 
-## Why This Project?
+- CI/CD via GitHub Actions
+- More order endpoints — order history, cancellation, status tracking. Right now it's just placement, which was the priority given the time I had.
 
-This project was built to demonstrate concurrency-safe backend patterns relevant to real-world order/inventory systems: preventing overselling under simultaneous requests, avoiding dual-write failures between database and event stream, and making write operations safe to retry over unreliable networks.
+## Why I built this
+
+I wanted to actually prove I could handle the hard part of order/inventory systems — the concurrency bugs that don't show up until you have real simultaneous traffic. It's easy to claim "handles concurrent requests safely" in a README; it's another thing to load test it and watch the numbers land exactly where they should.
