@@ -97,3 +97,11 @@ Token gets passed in at runtime — it's not sitting in the script.
 ## Why I built this
 
 I wanted to actually prove I could handle the hard part of order/inventory systems — the concurrency bugs that don't show up until you have real simultaneous traffic. It's easy to claim "handles concurrent requests safely" in a README; it's another thing to load test it and watch the numbers land exactly where they should.
+
+## A note on latency and connection pooling
+
+Tried bumping HikariCP's pool size from the default (10) to 30, expecting lower latency under the 50-VU load test. It got worse instead — p95 went from 966ms to 2.2s.
+
+Turns out the bottleneck wasn't connections queuing, it was optimistic-lock contention on a single row. With a bigger pool, more requests hit the database at once, all racing to update the same product's stock — meaning more retries and conflicts happening at the database layer instead of queuing cleanly at the connection-pool layer. Reverted back to the default pool size, which performed better.
+
+Takeaway: when 50 concurrent requests are all fighting over one row, adding more DB connections doesn't help — it just moves the contention downstream. The real fix for that kind of hot-row contention would be batching writes or serializing access with a queue, not scaling the connection pool.
