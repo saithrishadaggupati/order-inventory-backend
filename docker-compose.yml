@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orderinv-postgres
+    environment:
+      POSTGRES_DB: orderinv
+      POSTGRES_USER: orderinv_user
+      POSTGRES_PASSWORD: orderinv_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - orderinv_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: orderinv-redis
+    ports:
+      - "6380:6379"
+
+  app:
+    build:
+      context: ./orderinventory
+    container_name: orderinv-app
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderinv
+      SPRING_DATASOURCE_USERNAME: orderinv_user
+      SPRING_DATASOURCE_PASSWORD: orderinv_pass
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+volumes:
+  orderinv_pgdata:
