@@ -9,7 +9,7 @@ A backend for handling orders and inventory without the usual concurrency headac
 - Redis for caching
 - Spring Security + JWT
 - Flyway for migrations
-- k6 for load testing
+- k6 for load testing (the test script itself is JS — that's the whole JS % in this repo)
 - GitHub Actions for CI (build + tests run on every push)
 - Docker Compose, deployed on AWS EC2
 
@@ -28,7 +28,7 @@ Also included: JWT auth, role-based access (`USER`/`ADMIN`), Redis caching on pr
 Ran a k6 test: 50 concurrent users, all hammering the same product that only has 30 units in stock.
 
 - 30 orders succeeded — exactly matching stock
-- 70 got rejected with a proper 409/400, not a crash
+- 70 got rejected with a proper error response, not a crash — 409 Conflict for stock/concurrency conflicts (an `IllegalStateException` means invalid input like a bad quantity, and returns 400 instead)
 - Final stock: **0**, never negative
 - p95 latency: 966ms, p99: 986ms
 
