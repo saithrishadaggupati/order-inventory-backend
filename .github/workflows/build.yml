@@ -10,21 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: orderinv_user
-          POSTGRES_PASSWORD: orderinv_pass
-          POSTGRES_DB: orderinv
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +23,5 @@ jobs:
       - name: Build and run tests
         working-directory: ./orderinventory
         env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/orderinv
-          SPRING_DATASOURCE_USERNAME: orderinv_user
-          SPRING_DATASOURCE_PASSWORD: orderinv_pass
+          TESTCONTAINERS_RYUK_DISABLED: "true"
         run: mvn clean verify
